@@ -9,9 +9,9 @@ In a collocated engine those prefills share steps with the decoding streams,
 so the gaps between their tokens stretch. With prefill/decode disaggregation
 the prefills run on another replica, and the decode rhythm should barely move.
 
-Run against whichever app is deployed (see deploy.py):
-    python itl.py --label collocated
-    python itl.py --label disaggregated
+Run against whichever app is deployed:
+    python itl.py --base-url $URL/v1 --api-key $KEY --label disaggregated
+    python itl.py --label collocated   # a local `serve run app:build_collocated_app`
 
 The injected prompts must fit max_model_len (4096 in app.py). Words are not
 tokens, so the table reports the mean prompt length the server counted.
@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import random
 import statistics
 import time
@@ -139,7 +140,7 @@ def format_table(label: str, rows: list[PhaseResult]) -> str:
 
 async def main(args: argparse.Namespace) -> None:
     """Warm up, then measure the quiet phase and the injected phase."""
-    client = AsyncOpenAI(base_url=args.base_url, api_key="not-needed", timeout=300, max_retries=0)
+    client = AsyncOpenAI(base_url=args.base_url, api_key=args.api_key, timeout=300, max_retries=0)
     await decode_stream(client, args.model, 16)  # first-call costs stay out of the numbers
     quiet = await run_phase(client, args, injecting=False)
     loaded = await run_phase(client, args, injecting=True)
@@ -155,6 +156,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--base-url", default="http://localhost:8000/v1")
     parser.add_argument("--model", default="qwen-0.5b")
+    parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY", "not-needed"),
+                        help="service bearer token; defaults to $OPENAI_API_KEY")
     parser.add_argument("--label", default="endpoint")
     parser.add_argument("--streams", type=int, default=8, help="parallel decoding streams")
     parser.add_argument("--max-tokens", type=int, default=512, help="tokens per stream")

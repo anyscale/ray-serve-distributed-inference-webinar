@@ -1,4 +1,4 @@
-# Image for kv-aware-router.yaml: the Ray 2.59 LLM image plus NVIDIA Dynamo's
+# Image for service.yaml: the Ray 2.59 LLM image plus NVIDIA Dynamo's
 # selection service, which KVAwareRouter imports as dynamo.llm.
 FROM anyscale/ray-llm:2.59.0-py312-cu130
 

@@ -1,15 +1,15 @@
-# Anyscale job that runs every check end to end, then releases its nodes.
+# Anyscale job that runs one rehearsal suite end to end, then releases its nodes.
 #
-#   anyscale job submit -f job.yaml --working-dir . -e .venv --env SUITE=ab
+#   cd 04-scaling && anyscale job submit -f checks/job.yaml --working-dir . --env SUITE=ab
 #
 # One 4-GPU node at most (max_resources). Three alternative GPU groups in three
 # zones, because on 31 Oct 2026 on-demand g6.12xlarge and then g6e.12xlarge
 # capacity ran out zone by zone in us-west-2.
 name: webinar-1105-scaling-verify
-cloud: anyscale_v2_default_cloud
 image_uri: anyscale/ray-llm:2.59.0-py312-cu130
 ray_version: 2.59.0
-entrypoint: bash run_all.sh
+entrypoint: bash checks/run_all.sh
+excludes: [".venv", "results"]
 max_retries: 0
 timeout_s: 7200
 compute_config:

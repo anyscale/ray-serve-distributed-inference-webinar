@@ -3,17 +3,20 @@
 The Serve app outlives this script, so a shell can deploy, measure and tear
 down in sequence without a background `serve run`:
 
-    python deploy.py collocated     # or: python deploy.py disaggregated
+    python ../checks/deploy.py collocated     # from pd-disaggregation/; or: disaggregated
     python itl.py --label collocated
     serve shutdown -y
 """
 
 import argparse
+import sys
+from pathlib import Path
 
 import ray
 from ray import serve
 
-from app import PDArgs, build_app, build_collocated_app
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "pd-disaggregation"))
+from app import PDArgs, build_app, build_collocated_app  # noqa: E402
 
 BUILDERS = {"collocated": build_collocated_app, "disaggregated": build_app}
 

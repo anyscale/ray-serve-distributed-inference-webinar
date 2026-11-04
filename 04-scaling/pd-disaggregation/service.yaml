@@ -1,0 +1,40 @@
+# Prefill/decode disaggregation: one prefill and one decode replica of Qwen2.5-0.5B.
+#
+#   anyscale service deploy -f service.yaml --working-dir .
+#   python itl.py --base-url $URL/v1 --api-key $KEY --label disaggregated
+#
+# For the baseline on the same 2 GPUs, set import_path to app:build_collocated_app.
+name: webinar-1105-pd-disaggregation
+
+# Ray 2.59.0 with vLLM 0.27.0 and NIXL, which moves the KV from prefill to decode.
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+ray_version: 2.59.0
+
+working_dir: .
+excludes: [".venv", "*.md"]
+applications:
+  - name: pd
+    route_prefix: /
+    import_path: app:build_app
+    args:
+      prefill_replicas: 1
+      decode_replicas: 1
+
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge  # CPU only; keeps the GPUs free
+  worker_nodes:
+    # AWS has no 2-GPU L4 instance. One 4x L4 node keeps the KV handoff on one
+    # machine; the 4x A10G node is the fallback when L4 capacity runs out.
+    - name: l4x4
+      instance_type: g6.12xlarge
+      min_nodes: 0
+      max_nodes: 1
+      market_type: ON_DEMAND
+    - name: a10gx4
+      instance_type: g5.12xlarge
+      min_nodes: 0
+      max_nodes: 1
+      market_type: ON_DEMAND
+  max_resources:
+    GPU: 4

@@ -2,7 +2,7 @@
 
 `--router` picks the router under test: `affinity` (PrefixCacheAffinityRouter,
 the shipped config) or `kvaware` (KVAwareRouter, which needs direct streaming,
-body forwarding and ai-dynamo; see configs/kv-aware-router.yaml).
+body forwarding and ai-dynamo; see ../../kv-aware-routing/service.yaml).
 
 Check 1, reuse. Two requests share a ~1,440-token prefix and arrive together at
 two replicas. The default router sends the second one to the free replica, which

@@ -1,134 +1,98 @@
-# 04 · Scaling for agents: demo code and configs
+# 04 · Scaling for agents
 
-Code for the scaling part of the webinar.
-Everything runnable uses Qwen2.5-0.5B-Instruct on one 4x L4 node.
+Two techniques as deployable code, each an `app.py` and a `service.yaml`, plus
+the production shapes for larger models.
 
-| Path | What it is | Who does it |
+| Path | What it is | Who does the work |
 |---|---|---|
-| `routing/app.py` | One model, two replicas, `PrefixCacheAffinityRouter` | Ray Serve LLM |
-| `routing/verify.py` | Reuse A/B (exits 1 if affinity loses) and a 2–8-request stall check | Ray Serve LLM |
-| `disaggregation/app.py` | `build_pd_openai_app` with NIXL, plus a collocated baseline on the same 2 GPUs | Ray Serve LLM builds the pools; vLLM moves the KV |
-| `disaggregation/itl.py` | Decode inter-token latency, quiet and with a long-prompt injector | |
-| `configs/wide-ep-deepseek.yaml` | DeepSeek-V3, DP = EP = 16, one GPU per rank | Serve places and gang-restarts; vLLM shards experts |
-| `configs/glm53-nvfp4-b200-dcp.yaml` | GLM-5.3 NVFP4 on 8x B200 with DCP 8 | vLLM |
-| `configs/kv-aware-router.yaml` + `Containerfile.kv-router` | `KVAwareRouter`, direct streaming, ai-dynamo | Ray Serve LLM (alpha) |
-| `configs/cpu-kv-tier.yaml` | CPU KV tier (`kv_offloading_size`) with sizing guidance | vLLM |
-| `configs/check_configs.py` | yaml.safe_load, LLMConfig and app-build checks, vLLM arg names | |
-| `workspace.yaml` | The Anyscale workspace for the demos | |
-| `job.yaml` + `run_all.sh` + `wait_for_gpus.py` | Every check as one Anyscale job | |
+| [`kv-aware-routing/`](kv-aware-routing/) | `KVAwareRouter` in front of 4 Qwen3-8B replicas (4x L40S) | Ray Serve LLM routes; NVIDIA Dynamo scores |
+| [`pd-disaggregation/`](pd-disaggregation/) | `build_pd_openai_app`: 1 prefill + 1 decode replica of Qwen2.5-0.5B, plus `itl.py` to measure decode | Ray Serve LLM builds the pools; vLLM's NIXL connector moves the KV |
+| [`configs/`](configs/) | Wide expert parallelism (DeepSeek-V3), decode context parallelism (GLM-5.3 on 8x B200) and a CPU KV tier (GLM-5.2). **Shown, not run**: they need B200, H200 or 8-GPU nodes | Serve places and restarts; vLLM shards |
+| [`checks/`](checks/) | The rehearsal harness: one Anyscale job per suite of checks | |
 
-## Everything as one job
+## KV-aware routing
 
-One suite per job, run one after another, so a noisy suite cannot push
-another's results out of the log:
+`kv-aware-routing/app.py` is the whole feature: one `LLMConfig` whose
+`request_router_config` names `KVAwareRouter`, and one weight,
+`DYN_ROUTER_PREFILL_LOAD_SCALE` (S).
 
-```bash
-for suite in configs ab stall itl; do   # kvaware also needs the --env flags in run_all.sh
-  anyscale job submit -f job.yaml --working-dir . -e .venv \
-    -n webinar-1105-scaling-$suite --env SUITE=$suite --wait
-done
-anyscale job logs -n webinar-1105-scaling-stall    # results block at the end
+```
+score = S x (prompt blocks - blocks already cached there) + work already running there
 ```
 
-Each GPU job waits for one 4-GPU node (L4, else L40S, else A10G, in us-west-2a/b/c).
-The configs suite needs no GPU.
+The lowest score wins. Raise S for long, repeated prompts, such as coding
+agents, so a cache hit outweighs a slightly longer queue.
 
-The files in `configs/` are production shapes to show, not to run. They need
-B200, H200 or 8-GPU nodes.
-
-## Workspace for the demos
-
-Start the workspace early. A cold start pulls the ray-llm image to a fresh
-node, which takes most of the wait.
+`service.yaml` carries the three requirements:
+- `ai-dynamo-runtime` in the image (see `Containerfile`);
+- direct streaming, set as service-level env vars;
+- body forwarding at the ingress, so the router can read the prompt.
 
 ```bash
-anyscale workspace_v2 create -f workspace.yaml   # once
-anyscale workspace_v2 start -n webinar-1105-scaling-ws
-anyscale workspace_v2 wait  -n webinar-1105-scaling-ws --state RUNNING --timeout-s 1800
-anyscale workspace_v2 push  -n webinar-1105-scaling-ws --local-dir .
+cd kv-aware-routing
+anyscale service deploy -f service.yaml --working-dir .
 ```
 
-Open the workspace terminal. Code lands in `~/default/`. Do one warm run of
-each demo so the model weights are cached on the node.
+**What to expect:**
+- On Ray 2.59.0, 2 replicas and 2/4/6/8 parallel requests, it finished every request.
+- It routed on the cache: 8 of 8 follow-up requests landed on their first
+  request's replica, against 0 of 8 for round robin.
+- It scores on KV blocks vLLM has already reported. Two identical requests that
+  arrive at the same moment both look cold, so test with follow-ups, not with
+  simultaneous pairs.
+- It is alpha, and Ray's guide says it does not yet support prefill/decode
+  disaggregation.
 
-## Routing A/B
+## Prefill/decode disaggregation
+
+`pd-disaggregation/app.py` builds two pools from two `LLMConfig`s that share
+the model and set `kv_transfer_config` to NIXL. `build_collocated_app` is the
+baseline: the same 2 GPUs as ordinary replicas.
 
 ```bash
-cd ~/default/routing
-python verify.py --skip-stall        # A/B only: two deployments, ~2 min each
+cd pd-disaggregation
+anyscale service deploy -f service.yaml --working-dir .
+python itl.py --base-url $URL/v1 --api-key $KEY --label disaggregated
 ```
 
-Expected shape: default router ~0% reused, affinity ~49%, then `PASS` with
-exit code 0. `echo $?` shows the exit code, so the check can gate CI.
+`itl.py` streams long replies, then adds an open-loop injector of long prompts,
+and prints decode inter-token latency for both phases. Read the
+`with injector` row against `quiet`. For the baseline, set `import_path` in
+`service.yaml` to `app:build_collocated_app` and run it again.
 
-**Do not put PrefixCacheAffinityRouter under concurrent load on Ray 2.59 or 2.60.**
-On 2.59.0 it stops serving at 2 parallel requests while the app reads RUNNING.
-The default router served the same load without a miss. The cause is a blocking
-`ray.get` on the router's event loop, fixed on master by ray-project/ray#66671.
-The 2-request A/B above is unaffected.
-
-**KVAwareRouter does not have this stall.** On the same Ray 2.59.0, 2 replicas
-and 2/4/6/8 parallel requests, it finished all 60 requests, both with the
-shipped config and with one slot per replica. It also routed on the cache: 8 of
-8 follow-ups landed on their seed's replica, against 0 of 8 for round robin.
-- Do not demo it with the simultaneous 2-request A/B. It scores on KV blocks
-  vLLM has already reported, so two requests that arrive together both look
-  cold (0% reuse).
-- Use the follow-up check instead. It needs direct streaming and ai-dynamo, as
-  in `configs/kv-aware-router.yaml`:
-
-```bash
-# Cluster env (service env_vars, or job --env): RAY_SERVE_ENABLE_HA_PROXY=1,
-# RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1, RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
-python ../cluster_tools.py pip --no-deps "ai-dynamo-runtime>=1.4.0"   # every node
-python verify.py --router kvaware --skip-reuse --skip-stall --followups 8
-```
-
-The stall check:
-
-```bash
-python verify.py --skip-reuse                          # affinity router, 2/4/6/8 parallel
-python verify.py --skip-reuse --stall-router default   # the same with the default router
-python verify.py --router kvaware --skip-reuse          # KVAwareRouter (env as above)
-```
-
-## Prefill/decode split
-
-Same model, same 2 GPUs, measured one way and then the other:
-
-```bash
-cd ~/default/disaggregation
-python deploy.py collocated        # 2 ordinary replicas; returns once RUNNING
-python itl.py --label collocated
-serve shutdown -y
-
-python deploy.py disaggregated     # 1 prefill + 1 decode replica, NIXL
-python itl.py --label disaggregated
-serve shutdown -y
-```
-
-Read the `with injector` row against `quiet` in each table.
-
-**What our run showed** (4x L40S):
-- On this 0.5B model the injector barely moves decode, and the split did not improve it.
-  - Collocated p99 went from 17.7 to 19.0 ms.
-  - Disaggregated p99 went from 17.4 to 20.7 ms.
-- So on a model this small the split does not pay: a short prefill barely
-  disturbs decode.
+**What to expect:**
+- On this 0.5B model the split does not pay: a short prefill barely disturbs
+  decode. In our run on 4x L40S, collocated p99 went from 17.7 to 19.0 ms and
+  disaggregated from 17.4 to 20.7 ms.
 - A visible stutter needs a heavy prefill, such as a 7B-class model with
-  8-16K-token prompts. We did not run that case.
-
-Before measuring, send a burst of 8 concurrent requests to the disaggregated
-app. The first KV handoff after deploy left one 6-9 s gap in both of our runs.
+  8-16K-token prompts.
+- Send a burst of 8 requests before measuring. The first KV handoff after a
+  deploy left one 6-9 s gap.
 
 ## Shown, not run
 
 ```bash
-python configs/check_configs.py           # YAML parse; LLMConfig checks need vLLM (Linux)
+python configs/check_configs.py    # YAML parse; LLMConfig checks need vLLM (Linux)
+python checks/check_apps.py        # builds both service.yaml apps without an engine
 ```
+
+## Rehearsal checks
+
+`checks/run_all.sh` runs one suite per Anyscale job (`configs`, `ab`, `stall`,
+`itl`, `kvaware`):
+
+```bash
+anyscale job submit -f checks/job.yaml --working-dir . --env SUITE=configs --wait
+```
+
+`checks/routing/` also holds the prefix-cache-affinity router app used for the
+reuse A/B. Do not put that router under concurrent load on Ray 2.59 or 2.60: it
+stops serving at 2 parallel requests while the app reads RUNNING (a blocking
+`ray.get` on the router's event loop, fixed on master by ray-project/ray#66671).
 
 ## Tear down
 
 ```bash
-anyscale workspace_v2 terminate -n webinar-1105-scaling-ws
+anyscale service terminate -n webinar-1105-kv-routing
+anyscale service terminate -n webinar-1105-pd-disaggregation
 ```

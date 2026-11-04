@@ -7,7 +7,6 @@
 #   anyscale workspace_v2 create -f workspace.yaml
 #   anyscale workspace_v2 start -n webinar-1105-scaling-ws
 name: webinar-1105-scaling-ws
-cloud: anyscale_v2_default_cloud
 # Ray 2.59.0 with vLLM 0.27.0 and NIXL, which the P/D connector needs.
 image_uri: anyscale/ray-llm:2.59.0-py312-cu130
 ray_version: 2.59.0

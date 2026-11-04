@@ -3,7 +3,6 @@
 # For the knob-off endpoint, deploy service_eager.yaml beside it.
 name: webinar-1105-engine-graphs
 image_uri: anyscale/ray-llm:2.59.0-py312-cu130
-cloud: anyscale_v2_default_cloud
 excludes: [".venv", "results"]
 applications:
   - name: llm

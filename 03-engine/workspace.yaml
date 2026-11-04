@@ -2,7 +2,6 @@
 # client scripts share a host and the sweep measures the engine, not the WAN.
 name: webinar-1105-engine-ws
 image_uri: anyscale/ray-llm:2.59.0-py312-cu130
-cloud: anyscale_v2_default_cloud
 idle_termination_minutes: 60
 compute_config:
   head_node:

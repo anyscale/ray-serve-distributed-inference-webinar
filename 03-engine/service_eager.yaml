@@ -2,7 +2,6 @@
 # Deploy: anyscale service deploy -f service_eager.yaml --working-dir .
 name: webinar-1105-engine-eager
 image_uri: anyscale/ray-llm:2.59.0-py312-cu130
-cloud: anyscale_v2_default_cloud
 excludes: [".venv", "results"]
 applications:
   - name: llm

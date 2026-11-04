@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checks for the scaling demos, one suite per job (entry point of job.yaml):
+# Rehearsal checks for 04-scaling, one suite per job (entry point of job.yaml):
 #   SUITE=ab       routing reuse A/B
 #   SUITE=stall    stall check at 2/4/6/8 with the affinity router, then the default router
 #   SUITE=itl      decode ITL, collocated vs disaggregated
@@ -48,7 +48,8 @@ python -c "import ray, vllm; print('ray', ray.__version__, '| vllm', vllm.__vers
 
 case "$SUITE" in
   configs)
-    step check-configs 600 bash -c "cd configs && python check_configs.py | tee -a $RESULTS"
+    step check-configs 600 bash -c "cd ../configs && python check_configs.py | tee -a $RESULTS"
+    step check-apps 600 bash -c "python check_apps.py | tee -a $RESULTS"
     step ai-dynamo 600 bash -c 'python -m venv --system-site-packages /tmp/dyn \
       && /tmp/dyn/bin/pip install -q --no-deps "ai-dynamo-runtime>=1.4.0" \
       && /tmp/dyn/bin/python -c "import importlib.metadata as m; from dynamo.llm import SelectionService; print(\"dynamo.llm ok, ai-dynamo-runtime\", m.version(\"ai-dynamo-runtime\"))"' \
@@ -70,7 +71,7 @@ case "$SUITE" in
     step wait-gpus 2800 python wait_for_gpus.py --gpus 4 --timeout-s 2700
     for which in collocated disaggregated; do
       step "itl-$which" 1200 bash -c \
-        "cd disaggregation && python deploy.py $which && python itl.py --label $which --results-file $RESULTS"
+        "cd ../pd-disaggregation && python ../checks/deploy.py $which && python itl.py --label $which --results-file $RESULTS"
       serve shutdown -y >/dev/null 2>&1; sleep 5
     done
     ;;

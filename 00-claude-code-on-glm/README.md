@@ -1,4 +1,4 @@
-# 00 · Cold open: a coding agent that isn't Claude
+# 00 · Claude Code on GLM: a coding agent that isn't Claude
 
 Claude Code fixes a real bug in a small repo. Then the
 reveal: every token came from GLM-5.3, an open-weight mixture-of-experts model

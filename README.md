@@ -11,7 +11,7 @@ on its own, and has its own README with the commands to run it.
 
 | Folder | Part of the talk | What it shows | Hardware | Start with |
 |---|---|---|---|---|
-| [00-cold-open](00-cold-open/) | Cold open | Claude Code working against an open-weight model served by Ray Serve LLM, through `/v1/messages` | Any Anthropic-compatible endpoint | `./claude-glm.sh --check` |
+| [00-claude-code-on-glm](00-claude-code-on-glm/) | Claude Code on GLM | Claude Code working against an open-weight model served by Ray Serve LLM, through `/v1/messages` | Any Anthropic-compatible endpoint | `./claude-glm.sh --check` |
 | [01-serve-foundations](01-serve-foundations/) | Ray Serve foundations | Routing, autoscaling and `@serve.batch` on one plain Python deployment | CPU only | `python load.py batch` |
 | [02-serve-llm](02-serve-llm/) | Ray Serve LLM | One `LLMConfig` serving Claude Code, Codex and Cursor; an LLM inside a larger app; batch inference with the same engine settings | 1× RTX PRO 6000 or 1× L40S; 1× L4 for the smaller demos | `python check_agents.py` |
 | [03-engine](03-engine/) | Inside the engine | Prefix cache cold vs warm, a concurrency sweep that draws the throughput–interactivity frontier, and one engine knob that moves it | 1× L4 per service | `python sweep.py` |
@@ -49,7 +49,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install pyyaml
 find . -name '*.py' -not -path './.venv/*' -exec python -m py_compile {} +
 python -c "import pathlib, yaml; [yaml.safe_load(p.read_text()) for p in pathlib.Path('.').rglob('*.yaml') if '.venv' not in p.parts]"
-(cd 00-cold-open/demo-bug && python -m unittest)   # one test fails on purpose: the agent fixes it
+(cd 00-claude-code-on-glm/demo-bug && python -m unittest)   # one test fails on purpose: the agent fixes it
 python 05-cost/cost.py
 ```
 

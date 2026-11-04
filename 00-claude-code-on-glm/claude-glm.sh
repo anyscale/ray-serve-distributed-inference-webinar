@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch Claude Code against the GLM-5.3 Ray Serve LLM service for the cold open.
+# Launch Claude Code against the GLM-5.3 Ray Serve LLM service.
 # Adapted from anyscale/llm-serving-for-coding-agents:
 #   part2-connect-clients-production/claude-service.sh
 #

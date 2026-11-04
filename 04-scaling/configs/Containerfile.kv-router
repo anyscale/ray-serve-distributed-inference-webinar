@@ -1,0 +1,8 @@
+# Image for kv-aware-router.yaml: the Ray 2.59 LLM image plus NVIDIA Dynamo's
+# selection service, which KVAwareRouter imports as dynamo.llm.
+FROM anyscale/ray-llm:2.59.0-py312-cu130
+
+# ai-dynamo-runtime holds dynamo.llm. --no-deps keeps the image's vLLM, pydantic
+# and uvloop, which the ai-dynamo meta-package would otherwise replace.
+RUN pip install --no-cache-dir --no-deps "ai-dynamo-runtime>=1.4.0" \
+ && python -c "from dynamo.llm import SelectionService"

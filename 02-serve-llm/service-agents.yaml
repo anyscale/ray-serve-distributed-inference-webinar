@@ -1,0 +1,34 @@
+# Qwen3.6-27B on one RTX PRO 6000, serving three agent APIs from one deployment.
+# Adapted from anyscale/llm-serving-for-coding-agents part3-optimize/service-always-on.yaml.
+#
+# Deploy from this directory:
+#   anyscale service deploy -f service-agents.yaml --working-dir .
+name: webinar-1105-qwen-agents
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+ray_version: 2.59.0
+
+# Service level, not a per-deployment runtime_env: the Serve controller reads
+# both at startup. In a runtime_env they reach only the replicas, and the
+# deploy fails with "ingress_request_router requires HAProxy".
+env_vars:
+  RAY_SERVE_ENABLE_HA_PROXY: "1"
+  RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+
+compute_config:
+  # Two 1-GPU sizes, so a g7e.4xlarge capacity shortage falls back to the
+  # 8xlarge. The single replica asks for one GPU, so only one node launches.
+  # The 64 GiB g7e.2xlarge runs out of host memory while loading the model.
+  worker_nodes:
+    # 1x RTX PRO 6000 96 GB, 128 GiB host RAM.
+    - instance_type: g7e.4xlarge
+      min_nodes: 0
+      max_nodes: 1
+    # 1x RTX PRO 6000 96 GB, 256 GiB host RAM.
+    - instance_type: g7e.8xlarge
+      min_nodes: 0
+      max_nodes: 1
+
+working_dir: .
+excludes: [".venv", "clients", "*.md"]
+applications:
+  - import_path: agents_app:app

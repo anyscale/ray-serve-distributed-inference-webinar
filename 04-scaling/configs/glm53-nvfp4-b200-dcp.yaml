@@ -1,0 +1,91 @@
+# GLM-5.3 NVFP4 on 8x B200 with decode context parallelism 8. Shown, not run.
+#
+# DCP is a vLLM setting that Serve passes through. GLM-5.3 uses MLA, whose single
+# latent KV head cannot be split by tensor parallelism, so at TP=8 every GPU
+# holds the same KV copy. decode_context_parallel_size 8 gives each GPU one
+# shard of every sequence's KV instead. Measured per replica on the same engine
+# (vLLM 0.31) and the same eight GPUs: 2,021,120 -> 15,430,656 tokens (7.6x).
+# The often-quoted 1.8M -> 15.3M (8.3x) also spans a vLLM 0.27 -> 0.31 upgrade.
+#
+# The production service also loads a request-filter middleware and a
+# callback that clears the FlashInfer autotune cache before each start. Both
+# need their own modules, so this self-contained file leaves them out.
+name: webinar-1105-scaling-glm53-dcp
+
+# Needs vLLM 0.31. Ray 2.59 ships vLLM 0.27 and Ray 2.60 ships 0.29, so this
+# runs on a Ray nightly LLM image. Production pinned nightly 13097981 with
+# vLLM 0.31.0. Today's nightly ships vLLM 0.32, where the switches below are
+# untested.
+image_uri: anyscale/ray-llm:nightly-py312-cu130
+
+applications:
+  - name: glm53
+    route_prefix: /
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: glm-5.3-nvfp4
+            model_source: nvidia/GLM-5.3-NVFP4
+          # All 8 ranks of one replica on one node.
+          placement_group_config:
+            strategy: STRICT_PACK
+            bundles: [{GPU: 1, CPU: 4}, {GPU: 1, CPU: 4}, {GPU: 1, CPU: 4}, {GPU: 1, CPU: 4},
+                      {GPU: 1, CPU: 4}, {GPU: 1, CPU: 4}, {GPU: 1, CPU: 4}, {GPU: 1, CPU: 4}]
+          deployment_config:
+            num_replicas: 1  # one replica per 8x B200 node
+            max_ongoing_requests: 192  # 2x max_num_seqs
+            # Must outlast the longest prefill; a replica takes ~16 min to return.
+            health_check_timeout_s: 300
+          # Serve gives the LLMServer replica (and so vLLM) only this runtime_env,
+          # never the application's. Engine env vars must go here.
+          runtime_env:
+            env_vars:
+              # vLLM 0.31 startup hang: with DCP > 1 its direct symmetric-memory
+              # DCP all-to-all deadlocked at startup. "0" selects the NCCL path.
+              VLLM_USE_DIRECT_DCP_A2A: "0"
+              VLLM_USE_DIRECT_DCP_Q_GATHER: "0"
+              VLLM_USE_DIRECT_DCP_KV_GATHER: "0"
+              # Three vLLM 0.31 defaults that made GLM-5.3 answer off-topic and
+              # then crash (CUDA illegal memory access). "0" restores 0.27 behavior.
+              VLLM_USE_V2_MODEL_RUNNER: "0"
+              VLLM_USE_BREAKABLE_CUDAGRAPH: "0"
+              VLLM_ALLREDUCE_USE_FLASHINFER: "0"
+              # Serve's ingress-to-replica gRPC cap defaults to 4 MiB (~770K
+              # tokens); larger prompts got HTTP 500 before reaching vLLM.
+              RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH: "67108864"
+              NCCL_CUMEM_ENABLE: "0"
+              VLLM_WORKER_MULTIPROC_METHOD: spawn
+              HF_HUB_ENABLE_HF_TRANSFER: "1"
+          engine_kwargs:
+            tensor_parallel_size: 8
+            decode_context_parallel_size: 8  # one KV shard per TP rank
+            enable_expert_parallel: true  # 32 of 256 experts per GPU
+            max_model_len: 1048576  # the checkpoint's native window
+            gpu_memory_utilization: 0.9
+            max_num_seqs: 96  # production value; the 15.3M-token pool was read at 96
+            enable_chunked_prefill: true
+            max_num_batched_tokens: 16384  # 32768 ran out of memory at init
+            enable_prefix_caching: true
+            kv_cache_dtype: fp8_e4m3
+            # FlashInfer CUTLASS NVFP4 MoE. "auto" picked a kernel that compiled
+            # for ~14 min and then hung.
+            moe_backend: flashinfer_cutlass
+            attention_config: {sparse_mla_force_mqa: true}
+            speculative_config:
+              method: mtp
+              num_speculative_tokens: 3  # 11% more output tokens/s than 5
+              moe_backend: triton  # the MTP drafter is unquantized BF16
+            reasoning_parser: glm47
+            tool_call_parser: glm47
+            enable_auto_tool_choice: true
+
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge
+  worker_nodes:
+    - name: b200x8
+      instance_type: p6-b200.48xlarge  # 8x B200; use your cloud's 8x B200 type
+      min_nodes: 1
+      max_nodes: 1
+      market_type: ON_DEMAND

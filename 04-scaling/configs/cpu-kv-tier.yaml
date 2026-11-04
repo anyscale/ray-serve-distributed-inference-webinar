@@ -1,0 +1,74 @@
+# A CPU tier for the KV cache (vLLM KV offloading). Shown, not run.
+#
+# The tier is a vLLM setting; Serve passes it through engine_kwargs. When the
+# GPU KV pool evicts a prefix, vLLM keeps a copy in pinned host memory and
+# loads it back over PCIe on the next hit, instead of recomputing the prefill.
+# Measured on replayed Claude Code traces (GLM-5.2 NVFP4, 8x RTX PRO 6000,
+# 8 lanes, one 900 s run per arm): prompt tokens from cache 6.1% -> 93.5%,
+# request throughput 3.79x.
+#
+# Sizing:
+#   1. kv_offloading_size is GiB of host RAM per replica, summed over its TP
+#      ranks. It is pinned for the replica's whole life, used or not.
+#   2. Tokens it holds = size / bytes per token. Read both numbers off vLLM's
+#      startup log: "Available KV cache memory" / "GPU KV cache size" gives
+#      bytes per token per GPU; multiply by the TP ranks. Here that is
+#      ~398 KiB per token, so 512 GiB holds ~1.32M tokens.
+#   3. Make the tier several times the GPU pool. 512 GiB is 3.1x this pool
+#      and produced the result above. 160 GiB, about the size of the GPU
+#      pool, produced zero hits: it evicted as fast as the GPU did. Sizes in
+#      between are untested.
+#   4. Stay well under host RAM. The study used 512 of 1,006 GiB, leaving
+#      room for the OS, the Ray object store and the engine processes.
+#   5. It pays only when the working set overflows the GPU pool. With DCP=8
+#      on 8x B200 (15M-token GPU pool) a 1,331 GiB tier served only
+#      10.7-12.2% of hits.
+name: webinar-1105-scaling-cpu-kv-tier
+
+# Measured on Ray 2.58.0 + vLLM 0.26.0. Re-test on a newer vLLM rather than
+# assume the result carries over.
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+
+applications:
+  - name: glm52
+    route_prefix: /
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: glm-5.2-nvfp4
+            model_source: nvidia/GLM-5.2-NVFP4
+          placement_group_config:
+            strategy: STRICT_PACK
+            bundles: [{GPU: 1, CPU: 4}, {GPU: 1, CPU: 4}, {GPU: 1, CPU: 4}, {GPU: 1, CPU: 4},
+                      {GPU: 1, CPU: 4}, {GPU: 1, CPU: 4}, {GPU: 1, CPU: 4}, {GPU: 1, CPU: 4}]
+          deployment_config:
+            num_replicas: 1
+          runtime_env:
+            env_vars:
+              NCCL_P2P_DISABLE: "1"  # PCIe-only RTX PRO 6000 node
+          engine_kwargs:
+            tensor_parallel_size: 8
+            enable_expert_parallel: true
+            max_model_len: 262144
+            enable_chunked_prefill: true
+            max_num_batched_tokens: 8192
+            kv_cache_dtype: fp8_e4m3
+            moe_backend: marlin  # weight-only NVFP4 path for RTX PRO 6000
+            # The CPU tier sits on top of the GPU prefix cache.
+            enable_prefix_caching: true
+            kv_offloading_backend: native
+            kv_offloading_size: 512  # GiB per replica, all 8 ranks together
+            # Per-request cached_tokens (GPU + CPU hits), to measure the tier.
+            enable_prompt_tokens_details: true
+
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge
+  worker_nodes:
+    - name: rtxpro6000x8
+      # 8x RTX PRO 6000 with about 1 TiB or more of host RAM; use your cloud's type.
+      instance_type: g7e.48xlarge
+      min_nodes: 1
+      max_nodes: 1
+      market_type: ON_DEMAND

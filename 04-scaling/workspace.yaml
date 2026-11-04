@@ -1,0 +1,23 @@
+# Anyscale workspace for the routing and disaggregation demos.
+#
+# One 4x L4 node: routing uses two GPUs, disaggregation two (one prefill and one
+# decode replica). AWS has no 2-GPU L4, A10G or L40S instance, so the two demos
+# share one 4-GPU node and run one at a time. A CPU head keeps the GPUs free.
+#
+#   anyscale workspace_v2 create -f workspace.yaml
+#   anyscale workspace_v2 start -n webinar-1105-scaling-ws
+name: webinar-1105-scaling-ws
+cloud: anyscale_v2_default_cloud
+# Ray 2.59.0 with vLLM 0.27.0 and NIXL, which the P/D connector needs.
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+ray_version: 2.59.0
+idle_termination_minutes: 60
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge
+  worker_nodes:
+    - name: l4x4
+      instance_type: g6.12xlarge  # 4x L4 24 GB; fallback g5.12xlarge (4x A10G)
+      min_nodes: 1
+      max_nodes: 1
+      market_type: ON_DEMAND

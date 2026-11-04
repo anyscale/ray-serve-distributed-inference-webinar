@@ -1,0 +1,14 @@
+# Verification workspace: one L4 on the head node, so the endpoint and the
+# client scripts share a host and the sweep measures the engine, not the WAN.
+name: webinar-1105-engine-ws
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+cloud: anyscale_v2_default_cloud
+idle_termination_minutes: 60
+compute_config:
+  head_node:
+    instance_type: g6.4xlarge   # 1x L4 24 GB, 16 vCPU, 64 GB RAM
+    resources:
+      CPU: 16
+      GPU: 1
+  worker_nodes: []
+  auto_select_worker_config: false

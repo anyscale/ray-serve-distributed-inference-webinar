@@ -1,0 +1,29 @@
+# Fallback for service-agents.yaml when no RTX PRO 6000 (g7e) capacity is available.
+# Same app and engine settings, with Qwen3.6-27B FP8 weights on one L40S 48 GB.
+# This is the configuration verified on Anyscale on 31 Oct 2026.
+#
+# Deploy from this directory:
+#   anyscale service deploy -f service-agents-l40s.yaml --working-dir .
+name: webinar-1105-qwen-agents
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+ray_version: 2.59.0
+
+env_vars:
+  RAY_SERVE_ENABLE_HA_PROXY: "1"
+  RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+  # The 28.7 GiB FP8 checkpoint leaves about 8 GiB for KV on 48 GB, which holds
+  # about 142K tokens, so the context is capped at 128K instead of 256K.
+  LLM_MODEL_SOURCE: Qwen/Qwen3.6-27B-FP8
+  LLM_MAX_MODEL_LEN: "131072"
+
+compute_config:
+  worker_nodes:
+    # g6e.4xlarge: 1x L40S 48 GB, 128 GiB host RAM.
+    - instance_type: g6e.4xlarge
+      min_nodes: 1
+      max_nodes: 1
+
+working_dir: .
+excludes: [".venv", "clients", "*.md"]
+applications:
+  - import_path: agents_app:app

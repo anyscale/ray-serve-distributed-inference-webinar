@@ -1,0 +1,316 @@
+<title>Decode Context Parallelism Primer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,600..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a single reading column of numbered steps; each step pairs a short explanation with one live figure. */
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --ink:#15191e; --muted:#5a6470; --line:#d9dde3; --soft:#eceff3;
+  --accent:#2a5aa6; --good:#2e7d32; --bad:#c23b3b; --goodt:#e2f3e3; --badt:#fbe3e3; --lat:#6b7280;
+  --r0:#5a3fc0; --r1:#2e8b6e; --r2:#2a7ab0; --r3:#b0662a; --r4:#7a8c2e; --r5:#a04f86; --r6:#4f7f8c; --r7:#8a6d4b;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#101317; --surface:#171b20; --ink:#e6e9ed; --muted:#9aa4ae; --line:#2c333a; --soft:#1f252b;
+  --accent:#7aa2e6; --good:#5cc27a; --bad:#f07068; --goodt:#16301d; --badt:#3a1d1d; --lat:#8b93a0;
+  --r0:#8f78e8; --r1:#4fb495; --r2:#5aa3d6; --r3:#d68b4c; --r4:#a3b54f; --r5:#c779ad; --r6:#78a8b5; --r7:#b5967a;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101317; --surface:#171b20; --ink:#e6e9ed; --muted:#9aa4ae; --line:#2c333a; --soft:#1f252b;
+  --accent:#7aa2e6; --good:#5cc27a; --bad:#f07068; --goodt:#16301d; --badt:#3a1d1d; --lat:#8b93a0;
+  --r0:#8f78e8; --r1:#4fb495; --r2:#5aa3d6; --r3:#d68b4c; --r4:#a3b54f; --r5:#c779ad; --r6:#78a8b5; --r7:#b5967a;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:16px/1.6 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:32px 72px}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{font-family:var(--display);font-stretch:85%;margin:0;text-wrap:balance}
+h1{font-size:clamp(32px,5.4vw,50px);font-weight:800;line-height:1.04}
+h2{font-size:26px;font-weight:700;line-height:1.15}
+h3{font-size:17px;font-weight:700}
+p{margin:0;max-width:68ch}
+.eyebrow{font:500 12px/1.2 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+code,.m{font-family:var(--mono);font-size:.92em}
+.lede{font-size:18px;max-width:64ch}
+header{display:flex;flex-direction:column;gap:16px}
+.axes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.axis{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.axis b{font-family:var(--display);font-stretch:85%;font-size:18px}
+@media (max-width:640px){.axes{grid-template-columns:1fr}}
+section.step{display:flex;flex-direction:column;gap:16px}
+.step-head{display:flex;gap:14px;align-items:baseline}
+.num{font:500 13px/1 var(--mono);color:var(--accent);border:1.5px solid var(--accent);border-radius:999px;padding:5px 9px;flex-shrink:0}
+.fig{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.fig svg{width:100%;height:auto;display:block}
+.controls{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;font-size:14px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{font:500 13px/1 var(--mono);background:var(--surface);color:var(--ink);border:0;border-right:1px solid var(--line);padding:8px 12px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.seg button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cap{font-size:14px;color:var(--muted);max-width:72ch}
+.takeaway{border-left:3px solid var(--accent);padding:4px 0 4px 14px;font-weight:500;max-width:68ch}
+.stats{display:flex;flex-wrap:wrap;gap:12px}
+.stat{background:var(--soft);border-radius:6px;padding:8px 12px;font:500 14px/1.35 var(--mono)}
+.stat small{display:block;font:400 12px var(--body);color:var(--muted)}
+.good{color:var(--good)} .bad{color:var(--bad)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums;min-width:560px}
+th{text-align:left;font:500 11px/1.2 var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.sliders{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px}
+.sliders label{display:flex;flex-direction:column;align-items:center;gap:4px;font:400 12px var(--mono);color:var(--muted)}
+.sliders input{width:100%}
+@media (max-width:640px){.sliders{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.formula{font:500 15px/1.6 var(--mono);background:var(--soft);border-radius:6px;padding:10px 14px;overflow-x:auto;white-space:nowrap}
+details{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 16px}
+summary{cursor:pointer;font-weight:600}
+details p{margin-top:8px}
+.quiz{display:flex;flex-direction:column;gap:10px}
+svg text{font-family:var(--body);fill:var(--ink)}
+svg .mono{font-family:var(--mono)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">A primer for the 5 Nov webinar</span>
+  <h1>Decode context parallelism, from the attention math up</h1>
+  <p class="lede">Every serving trick in the scaling part of the talk comes down to one question: which axis of which tensor gets split across GPUs. This page builds that up in seven steps. Each step has a figure you can change.</p>
+  <div class="axes" aria-label="The three axes this page is about">
+    <div class="axis"><span class="eyebrow">Tensor parallelism</span><b>splits heads</b><span class="cap">Weights and the KV cache are cut along the attention-head axis.</span></div>
+    <div class="axis"><span class="eyebrow">MLA models</span><b>have one shared KV vector</b><span class="cap">There is no KV-head axis left to cut, so every GPU keeps the same cache.</span></div>
+    <div class="axis"><span class="eyebrow">Decode context parallelism</span><b>splits tokens</b><span class="cap">The cache is cut along the sequence instead, and partial results are merged exactly.</span></div>
+  </div>
+</header>
+
+<section class="step" id="s1">
+  <div class="step-head"><span class="num">1</span><h2>Attention for one new token</h2></div>
+  <p>While generating, each step produces one new token. That token's query <span class="m">q</span> is scored against the key <span class="m">k</span> of every earlier token. The scores go through a softmax, and the output is the softmax-weighted average of the earlier tokens' values <span class="m">v</span>. The K and V of every earlier token are what the <b>KV cache</b> stores, so they are not recomputed each step.</p>
+  <div class="fig">
+    <div class="sliders" id="scoreSliders" aria-label="Scores q·k for tokens t0 to t7"></div>
+    <svg id="attnSvg" viewBox="0 0 900 250" role="img" aria-label="Bars of attention weights for 8 cached tokens and the resulting output"></svg>
+    <p class="cap">Drag the scores. Each token's weight is <span class="m">e^score / Σ e^score</span>; the output is <span class="m">Σ weight · v</span>. The values <span class="m">v</span> are scalars here to keep the arithmetic visible; in a real model each is a vector of 128 or 512 numbers.</p>
+  </div>
+  <p class="takeaway">One output needs every cached token. Remember this for step 6: if the tokens live on different GPUs, the softmax has to be split and put back together.</p>
+</section>
+
+<section class="step" id="s2">
+  <div class="step-head"><span class="num">2</span><h2>What one token costs in the cache</h2></div>
+  <p>Every layer caches something for every token. How much depends on the attention design. With full multi-head attention, each of the 32 heads has its own K and V. With grouped-query attention (GQA), 32 query heads share 8 KV heads. With multi-head latent attention (MLA), K and V are compressed into one shared vector that every head reads.</p>
+  <div class="fig">
+    <svg id="costSvg" viewBox="0 0 900 230" role="img" aria-label="Numbers cached per token per layer for MHA, GQA and MLA"></svg>
+    <p class="cap">Numbers cached per token, per layer. MHA and GQA use Llama-3-8B-sized heads (head_dim 128, K and V both cached). MLA uses GLM-5.3's config: a 512-wide latent plus a 64-wide position key, 576 in all.</p>
+  </div>
+  <p class="takeaway">MLA's cache is 3.6× smaller per token than this GQA layer, and 14× smaller than full multi-head attention. Hold that thought: step 3 shows how tensor parallelism throws much of that saving away.</p>
+</section>
+
+<section class="step" id="s3">
+  <div class="step-head"><span class="num">3</span><h2>Tensor parallelism is a split matrix multiply</h2></div>
+  <p>Tensor parallelism (TP) cuts the attention layer's weight matrices across GPUs, called ranks. W_Q, W_K and W_V are cut by output columns, which here means by head. Each rank computes Q, K and V only for its own heads, runs attention for those heads with no communication, and one all-reduce sums the partial outputs at the end. A rank only ever computes K and V for its own KV heads, so that is all it caches.</p>
+  <div class="fig">
+    <div class="controls"><span>Tensor-parallel size</span><div class="seg" id="tpSeg" role="group" aria-label="Tensor-parallel size"></div></div>
+    <svg id="tpSvg" viewBox="0 0 900 330" role="img" aria-label="How W_Q, W_K, W_V and the MLA down-projection are split across ranks, and the cache each rank holds"></svg>
+    <div class="stats" id="tpStats"></div>
+  </div>
+  <p class="takeaway">GQA's cache per rank shrinks as you add GPUs, until there are more GPUs than KV heads. MLA's never shrinks: its K and V come from one down-projection (W_DKV) with no head axis, so every rank computes and stores the same 576 numbers per token.</p>
+</section>
+
+<section class="step" id="s4">
+  <div class="step-head"><span class="num">4</span><h2>How MLA attends without K and V</h2></div>
+  <p>In MLA, each head would rebuild its own key from the shared latent <span class="m">c_j</span> with an up-projection, <span class="m">k = c_j · W_UK</span>. Because the score is a dot product, that up-projection can be moved onto the query once per step instead of onto every cached token. This is called absorption. Attention then runs directly against the cached latents.</p>
+  <div class="fig">
+    <div class="formula">score_j = q · k_j = q · (c_j W_UK)ᵀ = (q W_UKᵀ) · c_j = q̃ · c_j</div>
+    <div class="formula">output = (Σ_j weight_j · c_j) · W_UV</div>
+    <p class="cap">Position needs one extra piece. Rotary position encoding cannot be absorbed this way, so MLA adds a small 64-wide position key per token, shared by all heads. That is the "+ 64" in 576.</p>
+  </div>
+  <p class="takeaway">At decode time an MLA layer behaves like attention with a single 576-wide KV head that all 64 query heads read. One head is the worst case for tensor parallelism: there is nothing to split.</p>
+</section>
+
+<section class="step" id="s5">
+  <div class="step-head"><span class="num">5</span><h2>Decode context parallelism splits the tokens</h2></div>
+  <p>Decode context parallelism (DCP) keeps the 576-wide latent whole and splits the other axis: token <span class="m">t</span> is stored on rank <span class="m">t mod D</span>. It reuses the same GPUs as tensor parallelism. Each rank now holds every head's share of a quarter of the tokens, instead of all tokens for a quarter of the heads.</p>
+  <div class="fig">
+    <div class="controls"><span>DCP size</span><div class="seg" id="dcpSeg" role="group" aria-label="DCP size"></div></div>
+    <svg id="dcpSvg" viewBox="0 0 900 260" role="img" aria-label="Which rank stores each of 16 tokens, and how much cache each rank holds"></svg>
+    <div class="stats" id="dcpStats"></div>
+  </div>
+  <p class="takeaway">The cache per rank falls by the DCP size, so the same GPUs hold that many times more tokens. On GLM-5.3 with 8 × B200, going from DCP 1 to DCP 8 grew the GPU KV pool from 2.0M to 15.4M tokens.</p>
+</section>
+
+<section class="step" id="s6">
+  <div class="step-head"><span class="num">6</span><h2>The key idea: softmax can be split and merged exactly</h2></div>
+  <p>Now no rank has all the tokens. Each rank runs the softmax over only its own tokens and returns two things: its partial output <span class="m">o_r</span>, and <span class="m">Z_r</span>, the sum of <span class="m">e^score</span> over its tokens. Weighting each partial by its share of the total, <span class="m">Z_r / Z</span>, and adding them gives exactly the full answer. It uses the scores from step 1 and the DCP size from step 5.</p>
+  <div class="fig">
+    <div class="scroll"><table id="mergeTable"><thead><tr><th>Rank</th><th>Its tokens</th><th>Z_r = Σ e^score</th><th>o_r (local softmax)</th><th>Weight Z_r / Z</th><th>Weight × o_r</th></tr></thead><tbody></tbody></table></div>
+    <div class="stats" id="mergeStats"></div>
+    <p class="cap">In practice each rank sends <span class="m">log Z_r</span> (the log-sum-exp, or LSE) instead of <span class="m">Z_r</span>, so large scores cannot overflow. The weights become <span class="m">exp(LSE_r − LSE)</span>: the same numbers, computed safely. This is the identity behind FlashAttention's online softmax and Flash-Decoding, applied across GPUs instead of across chunks on one GPU.</p>
+  </div>
+  <p class="takeaway">Nothing is approximated. The only extra data per head is one partial output and one number per rank.</p>
+</section>
+
+<section class="step" id="s7">
+  <div class="step-head"><span class="num">7</span><h2>The price: two exchanges on every decode step</h2></div>
+  <p>Tensor parallelism gave each rank only its own heads' queries, but under DCP each rank must attend with every head over its tokens. So every attention layer, on every decode step, gains two collectives: an all-gather of the queries, then the merge of partial outputs and LSEs back to each rank's own heads. Their size does not depend on context length. The cache they save does.</p>
+  <div class="fig">
+    <div class="controls"><label for="ctx">Context length per sequence: <b id="ctxVal" class="m"></b></label><input id="ctx" type="range" min="0" max="3" step="0.05" value="2"></div>
+    <svg id="costCmpSvg" viewBox="0 0 900 200" role="img" aria-label="Cache per rank with and without DCP compared with data exchanged per decode token"></svg>
+    <p class="cap">Estimate for GLM-5.3, 78 layers, TP = DCP = 4, one sequence, FP8 cache (1 byte per number) and 16-bit messages. Exchanged per rank per layer: about 55 KB for the query all-gather plus about 49 KB for the merge, so about 8 MB per decode token across all layers. Real cost depends on the interconnect and batch size.</p>
+  </div>
+  <p class="takeaway">DCP pays when the cache is what runs out: long agent contexts, many concurrent sessions. It costs per-token latency when contexts are short and speed per user matters most. Measured on one 8 × B200 node at 24 sessions, one replica with DCP gave 34 tokens/s per user against 50 for two smaller replicas without it, a layout comparison rather than DCP alone.</p>
+</section>
+
+<section class="step" id="recap">
+  <div class="step-head"><span class="num">✓</span><h2>Recap</h2></div>
+  <div class="scroll"><table>
+    <thead><tr><th>Layout</th><th>What is split</th><th>Cache per token per rank (4 GPUs)</th><th>Extra communication per layer</th></tr></thead>
+    <tbody>
+      <tr><td>GQA + TP</td><td>Q, K, V by head</td><td class="m">512 of 2,048</td><td>none beyond the usual all-reduce</td></tr>
+      <tr><td>MLA + TP</td><td>Q by head; the latent is not split</td><td class="m bad">576 (every rank, replicated)</td><td>none beyond the usual all-reduce</td></tr>
+      <tr><td>MLA + TP + DCP</td><td>Q by head, the latent by token</td><td class="m good">144 on average</td><td>all-gather Q, merge by LSE</td></tr>
+    </tbody>
+  </table></div>
+  <div class="quiz">
+    <h3>Check yourself</h3>
+    <details><summary>Does DCP split the query matrix?</summary><p>No. Tensor parallelism already splits W_Q by head. DCP partly undoes that split at attention time: each rank gathers the queries for all heads, because it holds a slice of every sequence's tokens.</p></details>
+    <details><summary>Why doesn't TP shrink MLA's cache?</summary><p>TP cuts along heads. MLA's cache is one shared latent per token, produced by a down-projection with no head axis, so every rank needs all of it.</p></details>
+    <details><summary>Is the merge approximate?</summary><p>No. Softmax over all tokens equals the weighted sum of per-rank softmaxes, with weights Z_r / Z. The LSE form only changes how the weights are computed, for numerical safety.</p></details>
+    <details><summary>When would you leave DCP off?</summary><p>When contexts are short or few sessions run at once, so the cache is not the limit. The two extra exchanges then only add latency to every token.</p></details>
+  </div>
+</section>
+
+</div>
+
+<script>
+(function(){
+  var SC=[2.0,0.5,1.0,3.0,0.0,1.5,2.5,0.5], V=[1,-1,2,0.5,-2,1.5,0,3], D=4, TP=4;
+  var RK=['--r0','--r1','--r2','--r3','--r4','--r5','--r6','--r7'];
+  function col(i){return 'var('+RK[i%8]+')';}
+  function f(x,d){return Number(x).toFixed(d===undefined?2:d);}
+  function el(id){return document.getElementById(id);}
+
+  /* step 1: scores, weights, output */
+  var sl=el('scoreSliders');
+  SC.forEach(function(s,i){
+    var lab=document.createElement('label'); lab.htmlFor='sc'+i;
+    lab.innerHTML='t'+i+' <span id="scv'+i+'">'+f(s,1)+'</span>';
+    var inp=document.createElement('input'); inp.type='range'; inp.min='-2'; inp.max='4'; inp.step='0.1'; inp.value=s; inp.id='sc'+i;
+    inp.addEventListener('input',function(){SC[i]=+inp.value; el('scv'+i).textContent=f(SC[i],1); drawAttn(); drawMerge();});
+    lab.appendChild(inp); sl.appendChild(lab);
+  });
+  function softmax(idx){var e=idx.map(function(i){return Math.exp(SC[i]);}),z=e.reduce(function(a,b){return a+b;},0);return {e:e,z:z};}
+  function drawAttn(){
+    var all=[0,1,2,3,4,5,6,7], s=softmax(all), out=0, h='';
+    all.forEach(function(i,k){
+      var w=s.e[k]/s.z; out+=w*V[i];
+      var x=40+i*86, bh=w*150;
+      h+='<rect x="'+x+'" y="'+(180-bh)+'" width="60" height="'+bh+'" rx="4" fill="var(--accent)" opacity=".85"/>';
+      h+='<text x="'+(x+30)+'" y="'+(172-bh)+'" text-anchor="middle" font-size="13" class="mono">'+f(w*100,0)+'%</text>';
+      h+='<text x="'+(x+30)+'" y="200" text-anchor="middle" font-size="13">t'+i+'</text>';
+      h+='<text x="'+(x+30)+'" y="220" text-anchor="middle" font-size="12" class="mono" fill="var(--muted)">v='+V[i]+'</text>';
+    });
+    h+='<line x1="30" y1="180" x2="730" y2="180" stroke="var(--line)"/>';
+    h+='<text x="40" y="18" font-size="14" fill="var(--muted)">softmax weights</text>';
+    h+='<text x="760" y="110" font-size="14" fill="var(--muted)">output</text>';
+    h+='<text x="760" y="140" font-size="26" font-weight="600" class="mono" fill="var(--accent)">'+f(out,3)+'</text>';
+    el('attnSvg').innerHTML=h;
+  }
+
+  /* step 2: cache cost per token */
+  (function(){
+    var rows=[['MHA · 32 KV heads',8192,'var(--bad)'],['GQA · 8 KV heads',2048,'var(--accent)'],['MLA · one latent',576,'var(--good)']], h='';
+    rows.forEach(function(r,i){
+      var y=30+i*62, w=r[1]/8192*560;
+      h+='<text x="0" y="'+(y+26)+'" font-size="15">'+r[0]+'</text>';
+      h+='<rect x="200" y="'+y+'" width="'+w+'" height="38" rx="5" fill="'+r[2]+'" opacity=".85"/>';
+      h+='<text x="'+(212+w)+'" y="'+(y+26)+'" font-size="15" class="mono">'+r[1].toLocaleString()+'</text>';
+    });
+    h+='<text x="200" y="222" font-size="13" fill="var(--muted)">numbers cached per token, per layer</text>';
+    el('costSvg').innerHTML=h;
+  })();
+
+  /* step 3: tensor parallelism */
+  function segButtons(id,vals,cur,onpick){
+    var g=el(id); g.innerHTML='';
+    vals.forEach(function(v){var b=document.createElement('button'); b.type='button'; b.textContent=v; b.setAttribute('aria-pressed',String(v===cur));
+      b.addEventListener('click',function(){onpick(v);}); g.appendChild(b);});
+  }
+  function drawTP(){
+    segButtons('tpSeg',[1,2,4,8,16],TP,function(v){TP=v;drawTP();});
+    var h='', x0=200, W=560;
+    function bar(y,label,n,owner,lab){
+      h+='<text x="0" y="'+(y+24)+'" font-size="15" font-weight="600">'+label+'</text>';
+      var sw=W/n;
+      for(var i=0;i<n;i++){h+='<rect x="'+(x0+i*sw)+'" y="'+y+'" width="'+Math.max(sw-1.5,1)+'" height="34" rx="2" fill="'+(owner(i)<0?'var(--lat)':col(owner(i)))+'" opacity=".88"/>';}
+      if(lab) h+='<text x="'+(x0+W+12)+'" y="'+(y+23)+'" font-size="13" fill="var(--muted)">'+lab+'</text>';
+    }
+    bar(20,'W_Q · 32 heads',32,function(i){return Math.floor(i/(32/TP));},(32/TP)+' heads per rank');
+    var kvPer=Math.max(1,8/TP), rep=TP>8;
+    bar(80,'W_K, W_V · 8 KV heads',8,function(i){return rep?i:Math.floor(i/kvPer);}, rep?'each KV head on '+(TP/8)+' ranks':kvPer+' KV heads per rank');
+    bar(140,'MLA W_DKV · no heads',1,function(){return -1;},'same on all ranks');
+    h+='<text x="0" y="214" font-size="13" fill="var(--muted)">cache per token, per layer, per rank</text>';
+    var gqa=2048/Math.min(TP,8), mla=576, sc=300/2048;
+    [['GQA',gqa,'var(--accent)'],['MLA',mla,'var(--bad)']].forEach(function(r,i){
+      var y=226+i*48; h+='<text x="0" y="'+(y+24)+'" font-size="15">'+r[0]+'</text>';
+      h+='<rect x="'+x0+'" y="'+y+'" width="'+(r[1]*sc)+'" height="34" rx="4" fill="'+r[2]+'" opacity=".85"/>';
+      h+='<text x="'+(x0+r[1]*sc+10)+'" y="'+(y+23)+'" font-size="14" class="mono">'+r[1]+'</text>';
+    });
+    el('tpSvg').innerHTML=h;
+    el('tpStats').innerHTML='<div class="stat">'+TP+' rank'+(TP>1?'s':'')+'<small>tensor-parallel size</small></div>'+
+      '<div class="stat">'+gqa+' / 2,048<small>GQA cache per rank'+(rep?' (KV heads replicated)':'')+'</small></div>'+
+      '<div class="stat bad">576 / 576<small>MLA cache per rank, at any TP</small></div>';
+  }
+
+  /* step 5: DCP */
+  function drawDCP(){
+    segButtons('dcpSeg',[1,2,4,8],D,function(v){D=v;drawDCP();drawMerge();});
+    var h='';
+    h+='<text x="0" y="20" font-size="13" fill="var(--muted)">one sequence, 16 tokens: the colour is the rank that stores it</text>';
+    for(var t=0;t<16;t++){var x=t*55; h+='<rect x="'+x+'" y="32" width="50" height="40" rx="4" fill="'+col(t%D)+'" opacity=".85"/><text x="'+(x+25)+'" y="57" text-anchor="middle" font-size="13" fill="#fff">t'+t+'</text>';}
+    h+='<text x="0" y="110" font-size="13" fill="var(--muted)">cache per rank, numbers per token on average</text>';
+    var bw=Math.min(200,860/D-12);
+    for(var r=0;r<D;r++){var x2=r*(bw+12), hh=576/D/576*110;
+      h+='<rect x="'+x2+'" y="'+(240-hh)+'" width="'+bw+'" height="'+hh+'" rx="4" fill="'+col(r)+'" opacity=".85"/>';
+      h+='<text x="'+(x2+bw/2)+'" y="'+(232-hh)+'" text-anchor="middle" font-size="13" class="mono">'+f(576/D,0)+'</text>';
+      h+='<text x="'+(x2+bw/2)+'" y="256" text-anchor="middle" font-size="12">rank '+r+'</text>';}
+    el('dcpSvg').innerHTML=h;
+    el('dcpStats').innerHTML='<div class="stat">'+D+'<small>DCP size</small></div><div class="stat good">'+f(576/D,0)+'<small>numbers per token per rank</small></div><div class="stat good">×'+D+'<small>tokens the same GPUs can hold</small></div>';
+  }
+
+  /* step 6: merge */
+  function drawMerge(){
+    var full=softmax([0,1,2,3,4,5,6,7]), fullO=0;
+    [0,1,2,3,4,5,6,7].forEach(function(i,k){fullO+=full.e[k]/full.z*V[i];});
+    var rows='', merged=0, Z=full.z;
+    for(var r=0;r<D;r++){
+      var idx=[0,1,2,3,4,5,6,7].filter(function(t){return t%D===r;}), s=softmax(idx), o=0;
+      idx.forEach(function(i,k){o+=s.e[k]/s.z*V[i];});
+      var w=s.z/Z; merged+=w*o;
+      rows+='<tr><td><span style="color:'+col(r)+';font-weight:600">rank '+r+'</span></td><td class="m">'+idx.map(function(t){return 't'+t;}).join(', ')+'</td><td class="m">'+f(s.z)+'</td><td class="m">'+f(o,3)+'</td><td class="m">'+f(w,3)+'</td><td class="m">'+f(w*o,3)+'</td></tr>';
+    }
+    el('mergeTable').querySelector('tbody').innerHTML=rows;
+    el('mergeStats').innerHTML='<div class="stat">'+f(Z)+'<small>Z = Σ Z_r</small></div><div class="stat">'+f(merged,4)+'<small>merged O = Σ (Z_r / Z) · o_r</small></div><div class="stat">'+f(fullO,4)+'<small>full attention on one GPU</small></div><div class="stat good">'+Math.abs(merged-fullO).toExponential(1)+'<small>difference</small></div>';
+  }
+
+  /* step 7: price vs saving */
+  function drawCost(){
+    var e=+el('ctx').value, C=Math.round(Math.pow(10,3+e)), layers=78;
+    el('ctxVal').textContent=C>=1e6?f(C/1e6,1)+'M tokens':C>=1e3?f(C/1e3,0)+'K tokens':C+' tokens';
+    var noD=576*layers*C, withD=noD/4, msg=104e3*layers;
+    function fmt(b){return b>=1e9?f(b/1e9,1)+' GB':b>=1e6?f(b/1e6,1)+' MB':f(b/1e3,0)+' KB';}
+    var rows=[['cache per rank, no DCP',noD,'var(--bad)'],['cache per rank, DCP = 4',withD,'var(--good)'],['exchanged per decode token',msg,'var(--accent)']];
+    var mx=Math.log10(576*layers*1e6), mn=5, h='';
+    rows.forEach(function(r,i){var y=14+i*58, w=Math.max(4,(Math.log10(r[1])-mn)/(mx-mn)*480);
+      h+='<text x="0" y="'+(y+24)+'" font-size="14">'+r[0]+'</text><rect x="240" y="'+y+'" width="'+w+'" height="34" rx="4" fill="'+r[2]+'" opacity=".85"/><text x="'+(250+w)+'" y="'+(y+23)+'" font-size="14" class="mono">'+fmt(r[1])+'</text>';});
+    h+='<text x="240" y="194" font-size="12" fill="var(--muted)">log scale · per sequence</text>';
+    el('costCmpSvg').innerHTML=h;
+  }
+  el('ctx').addEventListener('input',drawCost);
+
+  drawAttn(); drawTP(); drawDCP(); drawMerge(); drawCost();
+})();
+</script>

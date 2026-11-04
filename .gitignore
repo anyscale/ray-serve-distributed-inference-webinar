@@ -1,0 +1,10 @@
+# Local throwaway venv used for py_compile, YAML and plotting checks.
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Never commit endpoint tokens or local client settings.
+.env
+*.local.json

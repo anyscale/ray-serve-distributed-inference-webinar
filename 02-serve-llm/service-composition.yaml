@@ -1,0 +1,30 @@
+# The composition app (triage on CPU, LLM on GPU) as an Anyscale Service.
+#
+# Deploy from this directory:
+#   anyscale service deploy -f service-composition.yaml --working-dir .
+#
+# This runnable copy uses a 4B Qwen on one L4 with the same engine settings
+# (engine.py). For Qwen3.6-27B, delete the three LLM_* env vars and use the
+# g7e.4xlarge worker from service-agents.yaml.
+name: webinar-1105-composition
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+ray_version: 2.59.0
+
+# No direct-streaming env vars here: composition uses the standard Serve LLM
+# path, where the LLM is one deployment among several.
+env_vars:
+  LLM_MODEL_ID: qwen3-4b
+  LLM_MODEL_SOURCE: Qwen/Qwen3-4B-Instruct-2507
+  LLM_MAX_MODEL_LEN: "32768"
+
+compute_config:
+  worker_nodes:
+    # g6.2xlarge: 1x L4 24 GB, 32 GiB host RAM.
+    - instance_type: g6.2xlarge
+      min_nodes: 1
+      max_nodes: 1
+
+working_dir: .
+excludes: [".venv", "clients", "*.md"]
+applications:
+  - import_path: composition:app

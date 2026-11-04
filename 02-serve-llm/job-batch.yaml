@@ -1,0 +1,26 @@
+# The ray.data.llm batch job as an Anyscale Job.
+#
+# Submit from this directory:
+#   anyscale job submit -f job-batch.yaml --working-dir . --wait
+#
+# Like service-composition.yaml, this runnable copy uses a 4B Qwen on one L4
+# with the engine settings from engine.py. For Qwen3.6-27B, delete the two
+# LLM_* env vars and use a g7e.4xlarge worker.
+name: webinar-1105-batch
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+ray_version: 2.59.0
+entrypoint: python batch_infer.py
+max_retries: 0
+
+env_vars:
+  LLM_MODEL_SOURCE: Qwen/Qwen3-4B-Instruct-2507
+  LLM_MAX_MODEL_LEN: "32768"
+
+compute_config:
+  worker_nodes:
+    - instance_type: g6.2xlarge
+      min_nodes: 1
+      max_nodes: 1
+
+working_dir: .
+excludes: [".venv", "clients", "*.md"]

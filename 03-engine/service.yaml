@@ -1,0 +1,23 @@
+# The demo endpoint: Qwen2.5-0.5B on one L4, CUDA graphs on (vLLM's default).
+# Deploy: anyscale service deploy -f service.yaml --working-dir .
+# For the knob-off endpoint, deploy service_eager.yaml beside it.
+name: webinar-1105-engine-graphs
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+cloud: anyscale_v2_default_cloud
+excludes: [".venv", "results"]
+applications:
+  - name: llm
+    route_prefix: /
+    import_path: knobs:build_app
+    args:
+      variant: cuda-graphs
+      model: qwen-0.5b
+# One node: the replica, the proxy and the controller share the L4 host.
+compute_config:
+  head_node:
+    instance_type: g6.4xlarge   # 1x L4 24 GB, 16 vCPU, 64 GB RAM
+    resources:
+      CPU: 16
+      GPU: 1
+  worker_nodes: []
+  auto_select_worker_config: false

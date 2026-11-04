@@ -1,0 +1,29 @@
+# The Ranker as an Anyscale Service. CPU only.
+#
+# Deploy from this directory:
+#   anyscale service deploy -f service.yaml --working-dir .
+#
+# The Python is the same app as `serve run app:app`. The Service adds an
+# HTTPS endpoint with token auth and rolling updates.
+name: webinar-1105-ranker
+# numpy and starlette ship in the image, so replicas start with no pip install.
+image_uri: anyscale/ray:2.59.0-py312
+ray_version: 2.59.0
+
+compute_config:
+  head_node:
+    instance_type: m5.xlarge
+    resources: {CPU: 0}  # keep replicas off the head; it runs the controller
+  worker_nodes:
+    # 16 vCPUs (8 cores) hold all 6 Ranker replicas, 1 CPU each, so the
+    # scale-up never waits for a new node.
+    - instance_type: m5.4xlarge
+      min_nodes: 1
+      max_nodes: 1
+
+working_dir: .
+excludes: [".venv", "*.md"]
+applications:
+  - name: ranker
+    route_prefix: /
+    import_path: app:app

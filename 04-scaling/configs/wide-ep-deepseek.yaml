@@ -1,0 +1,59 @@
+# Wide expert parallelism for a DeepSeek-class MoE model. Shown, not run.
+#
+# Layout: one GPU per rank, with data-parallel size = expert-parallel size = GPU
+# count (16 here: two 8x H200 nodes). Every GPU runs its own attention over its
+# own requests and holds 1/16 of the routed experts (16 of 256 per layer). Each
+# MoE layer is an all-to-all: tokens go to the GPUs holding their 8 chosen
+# experts, and the results come back.
+#
+# Why not the workshop's 16 ranks x tensor parallel 8 (128 GPUs):
+#   * MLA has one latent KV head, so tensor parallelism cannot split the KV
+#     cache. Every TP rank stores the same copy, and 7 of 8 copies are waste.
+#     Data-parallel attention gives each GPU its own requests and its own KV.
+#   * The experts are split by expert parallelism either way. TP=8 only adds
+#     an all-reduce per layer on top of the all-to-all.
+#   * 128 H100s is 8x the GPUs the weights need. FP8 DeepSeek-V3 is about
+#     700 GB, which fits on 16 H200s with room for KV.
+#
+# Ray Serve LLM's part: build_dp_openai_app deploys the 16 ranks as one gang,
+# spreads them over the two nodes, and restarts the whole group if one rank
+# fails (all or nothing). vLLM's part: expert sharding and the all-to-all.
+#
+# RDMA is mandatory. Without EFA or InfiniBand the all-to-all silently falls
+# back to TCP, which was up to 19x slower. Enable your cloud's RDMA
+# networking on the GPU node group before you deploy.
+name: webinar-1105-scaling-wide-ep
+
+# Ray 2.59.0 with vLLM 0.27.0. Use an image whose vLLM has DeepEP kernels
+# for your GPUs.
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+
+applications:
+  - name: wide-ep
+    route_prefix: /
+    import_path: ray.serve.llm:build_dp_openai_app
+    args:
+      llm_config:  # singular: build_dp_openai_app takes one config
+        model_loading_config:
+          model_id: deepseek-v3
+          model_source: deepseek-ai/DeepSeek-V3
+        accelerator_type: H200
+        engine_kwargs:
+          data_parallel_size: 16  # = GPU count: one rank per GPU
+          tensor_parallel_size: 1  # one GPU per rank
+          enable_expert_parallel: true  # EP size = DP x TP = 16
+          max_model_len: 65536
+          enable_chunked_prefill: true
+          # High-throughput kernels for prefill-heavy batches; use
+          # deepep_low_latency for a latency-bound decode pool.
+          all2all_backend: deepep_high_throughput
+
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge  # CPU head; no model work
+  worker_nodes:
+    - name: h200x8
+      instance_type: p5en.48xlarge  # 8x H200 141 GB, EFA networking
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND

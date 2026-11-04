@@ -1,0 +1,5 @@
+concurrency,output_tok_s_per_gpu,total_tok_s_per_gpu,tpot_ms,ttft_p50_ms,ttft_p90_ms,requests,errors,prompt_tokens,output_tokens
+1,178.5,1011.2,5.2,92.5,98.6,3,0,1037,222
+4,611.6,3326.0,5.97,97.5,168.9,12,0,1037,234
+16,1904.0,10445.5,7.23,140.6,323.2,48,0,1037,231
+64,3432.8,18955.5,16.02,285.5,1153.1,192,0,1037,229

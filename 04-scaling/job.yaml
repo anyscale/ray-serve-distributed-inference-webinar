@@ -1,0 +1,37 @@
+# Anyscale job that runs every check end to end, then releases its nodes.
+#
+#   anyscale job submit -f job.yaml --working-dir . -e .venv --env SUITE=ab
+#
+# One 4-GPU node at most (max_resources). Three alternative GPU groups in three
+# zones, because on 31 Oct 2026 on-demand g6.12xlarge and then g6e.12xlarge
+# capacity ran out zone by zone in us-west-2.
+name: webinar-1105-scaling-verify
+cloud: anyscale_v2_default_cloud
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+ray_version: 2.59.0
+entrypoint: bash run_all.sh
+max_retries: 0
+timeout_s: 7200
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge  # CPU only; the GPU node is the single test node
+  worker_nodes:
+    - name: l4x4
+      instance_type: g6.12xlarge  # 4x L4 24 GB
+      min_nodes: 0
+      max_nodes: 1
+      market_type: ON_DEMAND
+    - name: l40sx4
+      instance_type: g6e.12xlarge  # 4x L40S 48 GB, first fallback
+      min_nodes: 0
+      max_nodes: 1
+      market_type: ON_DEMAND
+    - name: a10gx4
+      instance_type: g5.12xlarge  # 4x A10G 24 GB, second fallback
+      min_nodes: 0
+      max_nodes: 1
+      market_type: ON_DEMAND
+  max_resources:
+    GPU: 4
+  zones: [us-west-2a, us-west-2b, us-west-2c]
+  enable_cross_zone_scaling: true

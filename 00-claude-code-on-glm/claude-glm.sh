@@ -64,6 +64,9 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="$MODEL"
 export CLAUDE_CODE_SUBAGENT_MODEL="$MODEL"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 export API_TIMEOUT_MS="${API_TIMEOUT_MS:-600000}"   # 10 min: a long cold prefill must not time out
+# Claude Code doesn't know GLM's context window: it would assume 200K and warn at startup.
+# Declaring the window removes the warning; 700K stays under the ~770K-token gRPC request cap.
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="${GLM_MAX_CONTEXT_TOKENS:-700000}"
 
 cd "$WORKDIR"
 exec claude

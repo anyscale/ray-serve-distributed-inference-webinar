@@ -153,8 +153,8 @@ The settings are shared, not the object: Ray Data builds its own processor confi
 - `/v1/models` lists the model id. Every client must use exactly `qwen3.6-27b`.
 - Qwen3.6 reasons by default. A 256-token `/v1/responses` call spent its whole budget thinking and came back `incomplete`. For short demos, send `"chat_template_kwargs": {"enable_thinking": false}`; all three APIs accept it.
 - Claude Code asks for 32,000 output tokens, and Codex sends about 23K tokens of system prompt and tools per turn. Both need far more than 32K of context, so never shrink `LLM_MAX_MODEL_LEN` below about 128K for the agent demo.
-- Both CLIs warn that they don't recognize `qwen3.6-27b` (Claude Code assumes a 200K window; Codex uses fallback metadata). The warnings are harmless.
-- Against the L40S fallback, run Codex with `CODEX_MODEL_CONTEXT_WINDOW=131072`.
+- Codex warns that it doesn't recognize `qwen3.6-27b` and uses fallback metadata; the warning is harmless. `clients/claude-code.sh` declares the context window, so Claude Code doesn't warn.
+- Against the L40S fallback, run Codex with `CODEX_MODEL_CONTEXT_WINDOW=131072` and Claude Code with `CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072`.
 
 ## Tear down
 

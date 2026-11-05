@@ -17,8 +17,10 @@ env_vars:
   RAY_SERVE_ENABLE_HA_PROXY: "1"
   RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
   RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
-  # HAProxy hands the router at most this much of each body (8 MiB). A longer
-  # prompt is routed on its prefix; watch serve_haproxy_ingress_router_truncations_total.
+  # HAProxy hands the router at most this many bytes of each body. Ray 2.59's
+  # default is 256 KiB, about 60K tokens of JSON, shorter than a long agent
+  # history; 8 MiB is the default on Ray master. A longer body is routed on its
+  # prefix. Memory cost is about 2 x bufsize per open connection.
   RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE: "8388608"
   # Counts routing failures and fallbacks to load-only routing.
   RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED: "1"

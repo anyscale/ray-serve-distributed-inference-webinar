@@ -5,6 +5,7 @@
 #   SUITE=itl      decode ITL, collocated vs disaggregated
 #   SUITE=configs  config checks and the ai-dynamo import
 #   SUITE=kvaware  KVAwareRouter: A/B, follow-ups and the stall check
+#   SUITE=offload  KV cache offloading: evict and return with no tier, then a CPU tier
 #   SUITE=kvaware-evidence  KVAwareRouter follow-ups with INFO logs, to name the routing
 #                  process. Submit both kvaware suites with
 #                  --env RAY_SERVE_ENABLE_HA_PROXY=1 --env RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
@@ -98,6 +99,12 @@ case "$SUITE" in
     step kv-followups 1500 bash -c "cd routing && python verify.py --router kvaware \
       --skip-reuse --skip-stall --followups 8 --serve-log-level INFO --results-file $RESULTS"
     kv_evidence kv-followups-info
+    ;;
+  offload)
+    step wait-gpus 2800 python wait_for_gpus.py --gpus 1 --timeout-s 2700
+    for tier in none cpu; do
+      step "offload-$tier" 1200 bash -c "python offload_run.py $tier | tee -a $RESULTS"
+    done
     ;;
   *) echo "unknown SUITE=$SUITE"; exit 2 ;;
 esac

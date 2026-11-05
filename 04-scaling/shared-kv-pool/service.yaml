@@ -1,0 +1,44 @@
+# A KV cache pool shared across nodes: two replicas of Qwen2.5-7B, each on its
+# own L4 node, and the Mooncake master on the head node.
+#
+#   anyscale service deploy -f service.yaml --working-dir .
+#   python across_replicas.py --base-url $URL --api-key $KEY
+#
+# Replicas a and b are separate applications only so the demo can choose which
+# one answers. In production they are one deployment with many replicas.
+# For the baseline, set shared_pool: false on both.
+name: webinar-1105-shared-kv-pool
+
+# Ray 2.59.0 + vLLM 0.27.0, plus Mooncake (see Containerfile).
+containerfile: Containerfile
+
+working_dir: .
+excludes: [".venv", "*.md"]
+applications:
+  - name: mooncake-master
+    route_prefix: /mooncake
+    import_path: mooncake_pool:build_master_app
+  - name: a
+    route_prefix: /a
+    import_path: app:build_app
+    args:
+      segment_gib: 8  # host memory each replica adds to the pool
+      protocol: tcp   # g6 nodes have no RDMA NIC
+  - name: b
+    route_prefix: /b
+    import_path: app:build_app
+    args:
+      segment_gib: 8
+      protocol: tcp
+
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge  # runs the Mooncake master; no GPU
+  worker_nodes:
+    # 1x L4 and 32 GiB of host memory per node; one replica per node.
+    - instance_type: g6.2xlarge
+      min_nodes: 0
+      max_nodes: 2
+      market_type: ON_DEMAND
+  max_resources:
+    GPU: 2

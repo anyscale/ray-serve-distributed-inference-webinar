@@ -1,6 +1,6 @@
 """Build each service.yaml's application without starting an engine.
 
-For kv-aware-routing/ and pd-disaggregation/: parse service.yaml, validate its
+For each app directory: parse every service*.yaml, validate its
 `args:` against the builder's argument model, and call the builder. Needs
 `ray.serve.llm`, which needs vLLM installed, so run it on the ray-llm image:
 
@@ -15,16 +15,17 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-APP_DIRS = ["kv-aware-routing", "pd-disaggregation"]
+APP_DIRS = ["kv-aware-routing", "pd-disaggregation", "kv-cache-offload", "shared-kv-pool"]
 
 
 def check(app_dir: str) -> bool:
-    """Build every application listed in one directory's service.yaml."""
-    doc = yaml.safe_load((ROOT / app_dir / "service.yaml").read_text())
+    """Build every application listed in one directory's service*.yaml files."""
     sys.path.insert(0, str(ROOT / app_dir))
     sys.modules.pop("app", None)  # each directory has its own app.py
     ok = True
-    for spec in doc["applications"]:
+    specs = [s for f in sorted((ROOT / app_dir).glob("service*.yaml"))
+             for s in yaml.safe_load(f.read_text())["applications"]]
+    for spec in specs:
         module_name, attr = spec["import_path"].split(":")
         builder = getattr(importlib.import_module(module_name), attr)
         arg_model = next(iter(inspect.signature(builder).parameters.values())).annotation

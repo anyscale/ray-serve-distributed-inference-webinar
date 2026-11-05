@@ -1,0 +1,16 @@
+# Image for service-disk.yaml: the Ray 2.59 LLM image plus LMCache 0.5.6.
+#
+# LMCache needs grpcio>=1.78 and prometheus_client<=0.24.1; the image ships
+# 1.75 and 0.25. Every other package keeps the image's version, so vLLM, torch
+# and Ray stay the versions Ray Serve LLM 2.59 ships with.
+FROM anyscale/ray-llm:2.59.0-py312-cu130
+
+# torch declares nvidia-nccl-cu13==2.29.7 while the image ships 2.30.7, and
+# resolving LMCache re-applies torch's pin. The last install puts the image's
+# NCCL back.
+RUN pip freeze | grep -E '^[A-Za-z0-9_.-]+==' \
+      | grep -viE '^(grpcio|prometheus[-_]client|nvidia-nccl-cu13)==' > /tmp/image-pins.txt \
+ && NCCL="$(pip freeze | grep -i '^nvidia-nccl-cu13==')" \
+ && pip install --no-cache-dir -c /tmp/image-pins.txt "lmcache==0.5.6" \
+ && pip install --no-cache-dir --no-deps "$NCCL" \
+ && rm /tmp/image-pins.txt

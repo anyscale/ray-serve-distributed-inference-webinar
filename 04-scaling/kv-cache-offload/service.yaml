@@ -1,0 +1,31 @@
+# KV cache offloading to CPU memory: one Qwen2.5-0.5B replica on one L4.
+#
+#   anyscale service deploy -f service.yaml --working-dir .
+#   python evict_and_return.py --base-url $URL/v1 --api-key $KEY
+#
+# tier: none deploys the same app without an offload tier, as the baseline.
+name: webinar-1105-kv-offload-cpu
+
+image_uri: anyscale/ray-llm:2.59.0-py312-cu130
+ray_version: 2.59.0
+
+working_dir: .
+excludes: [".venv", "*.md"]
+applications:
+  - name: kv-offload
+    route_prefix: /
+    import_path: app:build_app
+    args:
+      tier: cpu
+      cpu_gib: 8          # pinned host memory, held for the replica's whole life
+      gpu_kv_blocks: 1100 # about 17.6K tokens: small on purpose, so the demo evicts
+
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge
+  worker_nodes:
+    # 1x L4 with 64 GiB of host memory and a local NVMe drive.
+    - instance_type: g6.4xlarge
+      min_nodes: 0
+      max_nodes: 1
+      market_type: ON_DEMAND

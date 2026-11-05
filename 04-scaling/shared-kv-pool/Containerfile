@@ -1,0 +1,9 @@
+# Image for service.yaml: the Ray 2.59 LLM image plus Mooncake.
+#
+# vLLM 0.27 already ships MooncakeStoreConnector; it needs Mooncake's store
+# client, and the cluster needs the `mooncake_master` binary. This CUDA 13 wheel
+# provides both and adds only aiohttp, requests and msgpack, which the image
+# already has.
+FROM anyscale/ray-llm:2.59.0-py312-cu130
+
+RUN pip install --no-cache-dir "mooncake-transfer-engine-cuda13==0.3.14"

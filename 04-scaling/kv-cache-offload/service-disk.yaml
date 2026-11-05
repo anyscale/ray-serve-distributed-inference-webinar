@@ -1,0 +1,32 @@
+# KV cache offloading, disk tier: one Qwen2.5-0.5B replica on one L4.
+#
+#   anyscale service deploy -f service-disk.yaml --working-dir .
+#   python evict_and_return.py --base-url $URL/v1 --api-key $KEY
+#
+# tier: none deploys the same app without an offload tier, as the baseline.
+name: webinar-1105-kv-offload-disk
+
+# Ray 2.59.0 + vLLM 0.27.0, plus LMCache 0.5.6 (see Containerfile.lmcache).
+containerfile: Containerfile.lmcache
+
+working_dir: .
+excludes: [".venv", "*.md"]
+applications:
+  - name: kv-offload
+    route_prefix: /
+    import_path: app:build_app
+    args:
+      tier: disk
+      cpu_gib: 0.25       # LMCache's CPU tier: tiny, so the return is read from disk
+      disk_gib: 50        # on the node's local NVMe
+      gpu_kv_blocks: 1100 # about 17.6K tokens: small on purpose, so the demo evicts
+
+compute_config:
+  head_node:
+    instance_type: m5.2xlarge
+  worker_nodes:
+    # 1x L4 with 64 GiB of host memory and a local NVMe drive.
+    - instance_type: g6.4xlarge
+      min_nodes: 0
+      max_nodes: 1
+      market_type: ON_DEMAND
